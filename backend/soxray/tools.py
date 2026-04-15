@@ -5,7 +5,27 @@ from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from datetime import datetime
 
-from soxray.models import EvidenceFile, TestFinding, WorkpaperOutput
+from soxray.models import EvidenceFile, TestFinding, WorkpaperOutput, ControlDefinition
+
+_current_control: ControlDefinition | None = None
+_findings_buffer: list[TestFinding] = []
+
+
+def set_current_control(control: ControlDefinition) -> None:
+    global _current_control, _findings_buffer
+    _current_control = control
+    _findings_buffer = []
+
+
+def _record_finding(finding: TestFinding) -> None:
+    _findings_buffer.append(finding)
+
+
+def _get_current_context() -> tuple[ControlDefinition, list[TestFinding]]:
+    if _current_control is None:
+        raise ValueError("Current control is not set for workpaper generation.")
+    return _current_control, list(_findings_buffer)
+
 
 def load_evidence(filename: str) -> EvidenceFile:
     df = pd.read_csv(filename)
@@ -57,22 +77,45 @@ def lookup_record(dataset: list[dict[str, Any]], key: str, value: Any) -> dict[s
     return {"status": "not_found", "message": f"No record found with {key}={value}"}
 
 def flag_exception(sample_id: str, sample_identifier: str, finding_detail: str, citations: list[str]) -> TestFinding:
-    return TestFinding(
+    finding = TestFinding(
         sample_id=sample_id,
         sample_identifier=sample_identifier,
         result="EXCEPTION",
         evidence_citations=citations,
         finding_detail=finding_detail
     )
+    _record_finding(finding)
+    return finding
 
 def flag_pass(sample_id: str, sample_identifier: str, citations: list[str]) -> TestFinding:
-    return TestFinding(
+    finding = TestFinding(
         sample_id=sample_id,
         sample_identifier=sample_identifier,
         result="PASS",
         evidence_citations=citations,
         finding_detail="Sample passed testing without exceptions."
     )
+    _record_finding(finding)
+    return finding
+
+
+def generate_workpaper_from_context(total_samples: int, exceptions: int, conclusion: str) -> str:
+    control, findings = _get_current_context()
+
+    actual_total = len(findings)
+    total = total_samples if total_samples > 0 else actual_total
+
+    actual_exceptions = sum(1 for f in findings if f.result == "EXCEPTION")
+    exc_count = exceptions if exceptions > 0 else actual_exceptions
+
+    output = WorkpaperOutput(
+        control=control,
+        total_samples=total,
+        exceptions=exc_count,
+        findings=findings,
+        conclusion=conclusion,
+    )
+    return write_workpaper(output)
 
 def write_workpaper(output: WorkpaperOutput) -> str:
     doc = Document()

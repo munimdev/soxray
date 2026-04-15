@@ -21,6 +21,30 @@ itgc_001 = ControlDefinition(
     }
 )
 
+bpc_001 = ControlDefinition(
+    control_id="BPC-001",
+    control_name="Invoice 3-Way Match",
+    control_description="All vendor invoices must be approved for payment only when the invoice amount, purchase order amount, and goods receipt quantity × unit price agree within a 1% tolerance. Discrepancies must be flagged before payment is processed.",
+    test_procedure="""1. Load data/invoices.csv and data/purchase_orders.csv using load_evidence.
+2. Join the two datasets on PONumber using join_datasets.
+3. For each record, check if a matching PO exists. If join returns null POAmount (no PO found), flag as exception — payment made with no authorized PO.
+4. Calculate the percentage variance between InvoiceAmount and POAmount: abs(InvoiceAmount - POAmount) / POAmount * 100.
+5. Also calculate variance between InvoiceAmount and GoodsReceiptAmount using the same formula.
+6. If either variance exceeds 1.0%, flag as exception with the specific amounts and variance percentage in the finding detail.
+7. Otherwise flag as pass.
+8. Generate workpaper when all samples are evaluated.""",
+    frequency="Semi-Annual",
+    control_type="BPC",
+    threshold_rules={
+        "tolerance_pct": 1.0,
+        "join_key": "PONumber",
+        "invoice_amount_col": "InvoiceAmount",
+        "po_amount_col": "POAmount",
+        "goods_receipt_col": "GoodsReceiptAmount"
+    }
+)
+
 CONTROLS = {
-    "ITGC-001": itgc_001
+    "ITGC-001": itgc_001,
+    "BPC-001": bpc_001
 }

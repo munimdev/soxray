@@ -70,5 +70,46 @@ def generate_synthetic_data():
     print(f"Generated {len(term_df)} termination records in data/workday_terminations.csv")
     print(f"Generated {len(ad_df)} AD event records in data/ad_events.csv")
 
+    # 2. Generate 10 Invoices and POs for BPC-001
+    invoices = []
+    purchase_orders = []
+    
+    vendors = ["Acme Corp", "TechFlow", "Global Supplies", "Consulting Pro"]
+    
+    for i in range(1, 11):
+        inv_id = f"INV-{i:03d}"
+        po_number = f"PO-2026-{i:03d}"
+        vendor = random.choice(vendors)
+        base_amount = round(random.uniform(5000, 50000), 2)
+        inv_date = (base_date - timedelta(days=random.randint(1, 15))).strftime("%Y-%m-%d")
+        
+        if i <= 7:
+            # Clean: exact matches
+            invoices.append({"InvoiceID": inv_id, "PONumber": po_number, "VendorName": vendor, "InvoiceAmount": base_amount, "InvoiceDate": inv_date})
+            purchase_orders.append({"PONumber": po_number, "VendorName": vendor, "POAmount": base_amount, "GoodsReceiptAmount": base_amount, "ApprovedBy": f"manager.{i}"})
+        elif i == 8:
+            # Overbilling: Invoice 15% higher
+            inv_amount = round(base_amount * 1.15, 2)
+            invoices.append({"InvoiceID": inv_id, "PONumber": po_number, "VendorName": vendor, "InvoiceAmount": inv_amount, "InvoiceDate": inv_date})
+            purchase_orders.append({"PONumber": po_number, "VendorName": vendor, "POAmount": base_amount, "GoodsReceiptAmount": base_amount, "ApprovedBy": f"manager.{i}"})
+        elif i == 9:
+            # Missing goods: GoodsReceipt is 60%
+            good_amount = round(base_amount * 0.60, 2)
+            invoices.append({"InvoiceID": inv_id, "PONumber": po_number, "VendorName": vendor, "InvoiceAmount": base_amount, "InvoiceDate": inv_date})
+            purchase_orders.append({"PONumber": po_number, "VendorName": vendor, "POAmount": base_amount, "GoodsReceiptAmount": good_amount, "ApprovedBy": f"manager.{i}"})
+        elif i == 10:
+            # No matching PO
+            invoices.append({"InvoiceID": inv_id, "PONumber": po_number, "VendorName": vendor, "InvoiceAmount": base_amount, "InvoiceDate": inv_date})
+            # Purchase order does NOT exist
+
+    inv_df = pd.DataFrame(invoices)
+    inv_df.to_csv("data/invoices.csv", index=False)
+    
+    po_df = pd.DataFrame(purchase_orders)
+    po_df.to_csv("data/purchase_orders.csv", index=False)
+    
+    print(f"Generated {len(inv_df)} records in data/invoices.csv")
+    print(f"Generated {len(po_df)} records in data/purchase_orders.csv")
+
 if __name__ == "__main__":
     generate_synthetic_data()
