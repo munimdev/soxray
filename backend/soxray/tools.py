@@ -1,11 +1,18 @@
 import pandas as pd
 from pathlib import Path
 from typing import Any, cast
-from docx import Document
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from datetime import datetime
 
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+
 from soxray.models import EvidenceFile, TestFinding, WorkpaperOutput, ControlDefinition
+
+
+def _escape_xml(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 _current_control: ControlDefinition | None = None
 _findings_buffer: list[TestFinding] = []
@@ -185,75 +192,136 @@ def generate_workpaper_from_context(total_samples: int, exceptions: int, conclus
     return write_workpaper(output)
 
 def write_workpaper(output: WorkpaperOutput) -> str:
-    doc = Document()
-    
-    title = doc.add_heading(f"SOX Workpaper: {output.control.control_id}", 0)
-    title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    
-    doc.add_paragraph(f"Control Name: {output.control.control_name}", style="Intense Quote")
-    
-    header_table = doc.add_table(rows=3, cols=2)
-    header_table.style = 'Table Grid'
-    hdr_cells = header_table.rows[0].cells
-    hdr_cells[0].text = "Test Date"
-    hdr_cells[1].text = datetime.now().strftime("%Y-%m-%d")
-    
-    hdr_cells = header_table.rows[1].cells
-    hdr_cells[0].text = "Preparer"
-    hdr_cells[1].text = "soxray.ai Automated Agent"
-    
-    hdr_cells = header_table.rows[2].cells
-    hdr_cells[0].text = "Control Type / Freq"
-    hdr_cells[1].text = f"{output.control.control_type} / {output.control.frequency}"
-    
-    doc.add_paragraph()
-    
-    doc.add_heading("Control Description", level=1)
-    doc.add_paragraph(output.control.control_description)
-    
-    doc.add_heading("Test Procedure", level=1)
-    doc.add_paragraph(output.control.test_procedure)
-    
-    doc.add_heading("Results Summary", level=1)
-    summary_text = (f"Total Samples Tested: {output.total_samples}\n"
-                    f"Total Exceptions Identified: {output.exceptions}\n"
-                    f"Exception Rate: {(output.exceptions / max(1, output.total_samples)) * 100:.2f}%")
-    doc.add_paragraph(summary_text)
-
-    doc.add_heading("Sample Testing Selection & Results", level=1)
-    sample_table = doc.add_table(rows=1, cols=4)
-    sample_table.style = 'Light Shading Accent 1'
-    head_cells = sample_table.rows[0].cells
-    head_cells[0].text = "Sample ID"
-    head_cells[1].text = "Identifier"
-    head_cells[2].text = "Result"
-    head_cells[3].text = "Evidence Citations"
-    
-    for finding in output.findings:
-        row_cells = sample_table.add_row().cells
-        row_cells[0].text = finding.sample_id
-        row_cells[1].text = finding.sample_identifier
-        row_cells[2].text = finding.result
-        row_cells[3].text = ", ".join(finding.evidence_citations)
-
-    if output.exceptions > 0:
-        doc.add_heading("Exception Details", level=1)
-        for finding in output.findings:
-            if finding.result == "EXCEPTION":
-                p = doc.add_paragraph()
-                p.add_run(f"Sample {finding.sample_id} ({finding.sample_identifier}): ").bold = True
-                p.add_run(finding.finding_detail)
-                
-                resp_p = doc.add_paragraph("Management Response: ")
-                resp_p.runs[0].italic = True
-                resp_p.add_run(finding.control_owner_response or "Pending Input")
-
-    doc.add_heading("Conclusion", level=1)
-    conclusion_p = doc.add_paragraph()
-    conclusion_p.add_run(output.conclusion).bold = True
-    
     out_dir = Path("output")
     out_dir.mkdir(exist_ok=True)
-    filename = out_dir / f"workpaper_{output.control.control_id.lower()}.docx"
-    doc.save(str(filename))
+    filename = out_dir / f"workpaper_{output.control.control_id.lower()}.pdf"
+
+    doc = SimpleDocTemplate(
+        str(filename),
+        rightMargin=inch,
+        leftMargin=inch,
+        topMargin=inch,
+        bottomMargin=inch,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        name="CenterTitle",
+        parent=styles["Heading1"],
+        alignment=1,
+    )
+
+    story: list[Any] = []
+
+    story.append(
+        Paragraph(
+            _escape_xml(f"SOX Workpaper: {output.control.control_id}"),
+            title_style,
+        )
+    )
+    story.append(Spacer(1, 12))
+    story.append(
+        Paragraph(
+            _escape_xml(f"Control Name: {output.control.control_name}"),
+            styles["Normal"],
+        )
+    )
+    story.append(Spacer(1, 12))
+
+    header_data = [
+        ["Test Date", datetime.now().strftime("%Y-%m-%d")],
+        ["Preparer", "soxray.ai Automated Agent"],
+        ["Control Type / Freq", f"{output.control.control_type} / {output.control.frequency}"],
+    ]
+    header_table = Table(header_data, colWidths=[2 * inch, 4 * inch])
+    header_table.setStyle(
+        TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+            ("BACKGROUND", (0, 0), (0, -1), colors.lightgrey),
+        ])
+    )
+    story.append(header_table)
+    story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Control Description", styles["Heading1"]))
+    story.append(Paragraph(_escape_xml(output.control.control_description), styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Test Procedure", styles["Heading1"]))
+    procedure_source = (
+        output.control.workpaper_test_summary
+        if output.control.workpaper_test_summary
+        else output.control.test_procedure
+    )
+    procedure_text = _escape_xml(procedure_source).replace("\n", "<br/>")
+    story.append(Paragraph(procedure_text, styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Results Summary", styles["Heading1"]))
+    summary_text = (
+        f"Total Samples Tested: {output.total_samples}<br/>"
+        f"Total Exceptions Identified: {output.exceptions}<br/>"
+        f"Exception Rate: {(output.exceptions / max(1, output.total_samples)) * 100:.2f}%"
+    )
+    story.append(Paragraph(summary_text, styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Sample Testing Selection & Results", styles["Heading1"]))
+    cell_style = ParagraphStyle(
+        name="TableCell",
+        parent=styles["Normal"],
+        fontSize=9,
+        leading=11,
+    )
+    sample_data: list[list[Any]] = [
+        ["Sample ID", "Identifier", "Result", Paragraph("Evidence Citations", cell_style)],
+    ]
+    for finding in output.findings:
+        citations_text = ", ".join(finding.evidence_citations)
+        sample_data.append([
+            finding.sample_id,
+            finding.sample_identifier,
+            finding.result,
+            Paragraph(_escape_xml(citations_text), cell_style),
+        ])
+    evidence_col_width = 3.5 * inch
+    sample_table = Table(
+        sample_data,
+        colWidths=[1.2 * inch, 1.5 * inch, 1 * inch, evidence_col_width],
+    )
+    sample_table.setStyle(
+        TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
+        ])
+    )
+    story.append(sample_table)
+    story.append(Spacer(1, 16))
+
+    if output.exceptions > 0:
+        story.append(Paragraph("Exception Details", styles["Heading1"]))
+        for finding in output.findings:
+            if finding.result == "EXCEPTION":
+                story.append(
+                    Paragraph(
+                        f"<b>Sample {_escape_xml(finding.sample_id)} ({_escape_xml(finding.sample_identifier)}):</b> "
+                        f"{_escape_xml(finding.finding_detail)}",
+                        styles["Normal"],
+                    )
+                )
+                story.append(
+                    Paragraph(
+                        "<i>Management Response: </i>"
+                        f"{_escape_xml(finding.control_owner_response or 'Pending Input')}",
+                        styles["Normal"],
+                    )
+                )
+        story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Conclusion", styles["Heading1"]))
+    story.append(
+        Paragraph(f"<b>{_escape_xml(output.conclusion)}</b>", styles["Normal"])
+    )
+
+    doc.build(story)
     return str(filename)

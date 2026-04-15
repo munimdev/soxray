@@ -10,7 +10,7 @@ requires-python = ">=3.11,<4.0"
 dependencies = [
     "pydantic (>=2.12.5,<3.0.0)",
     "pandas (>=3.0.1,<4.0.0)",
-    "python-docx (>=1.2.0,<2.0.0)",
+    "reportlab (>=4.2.0,<5.0.0)",
     "python-dotenv (>=1.2.2,<2.0.0)",
     "langgraph (>=1.0.10,<2.0.0)",
     "langchain-openai (>=1.1.10,<2.0.0)",

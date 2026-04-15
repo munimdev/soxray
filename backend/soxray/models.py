@@ -9,6 +9,7 @@ class ControlDefinition(BaseModel):
     frequency: str
     control_type: str
     threshold_rules: dict[str, Any] = Field(default_factory=dict)
+    workpaper_test_summary: str | None = None
 
 class EvidenceFile(BaseModel):
     filename: str

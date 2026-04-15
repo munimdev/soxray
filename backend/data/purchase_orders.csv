@@ -1,10 +1,10 @@
 PONumber,VendorName,POAmount,GoodsReceiptAmount,ApprovedBy
-PO-2026-001,TechFlow,13604.18,13604.18,manager.1
-PO-2026-002,Acme Corp,39748.9,39748.9,manager.2
-PO-2026-003,Consulting Pro,40988.35,40988.35,manager.3
-PO-2026-004,Consulting Pro,28320.82,28320.82,manager.4
-PO-2026-005,Acme Corp,45484.84,45484.84,manager.5
-PO-2026-006,Acme Corp,27617.86,27617.86,manager.6
-PO-2026-007,Consulting Pro,12092.26,12092.26,manager.7
-PO-2026-008,Consulting Pro,10331.79,10331.79,manager.8
-PO-2026-009,Consulting Pro,39183.48,23510.09,manager.9
+PO-2026-001,Acme Corp,22687.94,22687.94,manager.1
+PO-2026-002,Acme Corp,33209.07,33209.07,manager.2
+PO-2026-003,TechFlow,31404.09,31404.09,manager.3
+PO-2026-004,Global Supplies,49149.75,49149.75,manager.4
+PO-2026-005,Consulting Pro,34408.84,34408.84,manager.5
+PO-2026-006,Consulting Pro,24499.25,24499.25,manager.6
+PO-2026-007,TechFlow,10670.7,10670.7,manager.7
+PO-2026-008,Global Supplies,23238.04,23238.04,manager.8
+PO-2026-009,Global Supplies,36659.28,21995.57,manager.9
