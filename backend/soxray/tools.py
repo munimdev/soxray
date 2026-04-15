@@ -69,12 +69,53 @@ def calculate_delta(timestamp1: Any, timestamp2: Any, unit: str = "hours") -> fl
         return delta.total_seconds() / (3600.0 * 24.0)
     return delta.total_seconds()
 
+
+def calculate_deltas(
+    timestamps_first: list[Any],
+    timestamps_second: list[Any],
+    unit: str = "hours",
+) -> list[float]:
+    if len(timestamps_first) != len(timestamps_second):
+        raise ValueError("timestamps_first and timestamps_second must have the same length")
+    result: list[float] = []
+    for t1, t2 in zip(timestamps_first, timestamps_second):
+        result.append(calculate_delta(t1, t2, unit))
+    return result
+
+
 def lookup_record(dataset: list[dict[str, Any]], key: str, value: Any) -> dict[str, Any]:
     for record in dataset:
         if record.get(key) == value:
             return record
     
     return {"status": "not_found", "message": f"No record found with {key}={value}"}
+
+
+def lookup_records(
+    dataset: list[dict[str, Any]],
+    key: str,
+    values: list[Any],
+) -> list[dict[str, Any]]:
+    index: dict[Any, dict[str, Any]] = {}
+    for record in dataset:
+        record_key = record.get(key)
+        if record_key is not None and record_key not in index:
+            index[record_key] = record
+
+    results: list[dict[str, Any]] = []
+    for value in values:
+        if value in index:
+            results.append(index[value])
+        else:
+            results.append(
+                {
+                    "status": "not_found",
+                    "message": f"No record found with {key}={value}",
+                    "key": key,
+                    "value": value,
+                }
+            )
+    return results
 
 def flag_exception(sample_id: str, sample_identifier: str, finding_detail: str, citations: list[str]) -> TestFinding:
     finding = TestFinding(
@@ -97,6 +138,32 @@ def flag_pass(sample_id: str, sample_identifier: str, citations: list[str]) -> T
     )
     _record_finding(finding)
     return finding
+
+
+def flag_findings_batch(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for f in findings:
+        result_raw = f.get("result", "PASS")
+        result_type = str(result_raw).upper() if result_raw else "PASS"
+        if result_type not in ("PASS", "EXCEPTION", "INCONCLUSIVE"):
+            result_type = "INCONCLUSIVE"
+        detail = f.get("finding_detail")
+        if result_type == "EXCEPTION" and not detail:
+            detail = "Exception identified."
+        elif result_type == "PASS":
+            detail = detail or "Sample passed testing without exceptions."
+        else:
+            detail = detail or "Inconclusive."
+        finding = TestFinding(
+            sample_id=str(f["sample_id"]),
+            sample_identifier=str(f["sample_identifier"]),
+            result=result_type,
+            evidence_citations=list(f.get("evidence_citations", [])),
+            finding_detail=detail,
+        )
+        _record_finding(finding)
+        out.append(finding.model_dump())
+    return out
 
 
 def generate_workpaper_from_context(total_samples: int, exceptions: int, conclusion: str) -> str:

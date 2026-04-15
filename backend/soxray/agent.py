@@ -9,10 +9,9 @@ from langchain_core.tools import tool
 from soxray.tools import (
     load_evidence as load_evidence_fn,
     join_datasets as join_datasets_fn,
-    calculate_delta as calculate_delta_fn,
-    lookup_record as lookup_record_fn,
-    flag_exception as flag_exception_fn,
-    flag_pass as flag_pass_fn,
+    calculate_deltas as calculate_deltas_fn,
+    lookup_records as lookup_records_fn,
+    flag_findings_batch as flag_findings_batch_fn,
     generate_workpaper_from_context,
 )
 
@@ -30,31 +29,25 @@ def join_datasets(df1: list, df2: list, join_key: str) -> list:
 
 
 @tool
-def calculate_delta(timestamp1: str, timestamp2: str, unit: str = "hours") -> float:
-    """Calculates time difference between two timestamps."""
-    return calculate_delta_fn(timestamp1, timestamp2, unit)
+def calculate_deltas(
+    timestamps_first: list[str],
+    timestamps_second: list[str],
+    unit: str = "hours",
+) -> list[float]:
+    """Calculates time differences for many pairs in one call. Lists must be same length. Returns hours (or days/seconds if unit set). Use -1.0 for invalid/missing pairs."""
+    return calculate_deltas_fn(timestamps_first, timestamps_second, unit)
 
 
 @tool
-def lookup_record(dataset: list, key: str, value: Any) -> dict:
-    """Looks up a record in a dataset. Crucially, if no record is found, returns a structured not found result instead of failing."""
-    return lookup_record_fn(dataset, key, value)
+def lookup_records(dataset: list, key: str, values: list[Any]) -> list[dict]:
+    """Looks up multiple records in a dataset in a single call. Returns a list of records or structured not found results aligned with the input values."""
+    return lookup_records_fn(dataset, key, values)
 
 
 @tool
-def flag_exception(
-    sample_id: str, sample_identifier: str, finding_detail: str, citations: list[str]
-) -> dict:
-    """Flags an exception for a given sample."""
-    return flag_exception_fn(
-        sample_id, sample_identifier, finding_detail, citations
-    ).model_dump()
-
-
-@tool
-def flag_pass(sample_id: str, sample_identifier: str, citations: list[str]) -> dict:
-    """Flags a pass for a given sample."""
-    return flag_pass_fn(sample_id, sample_identifier, citations).model_dump()
+def flag_findings_batch(findings: list[dict]) -> list[dict]:
+    """Records many findings in one call. Each item: sample_id, sample_identifier, result ('PASS' or 'EXCEPTION'), evidence_citations (list of strings), and for EXCEPTION optionally finding_detail. Prefer this over calling flag_pass/flag_exception in a loop when you have multiple samples."""
+    return flag_findings_batch_fn(findings)
 
 
 @tool
@@ -70,10 +63,9 @@ def generate_workpaper(
 tools = [
     load_evidence,
     join_datasets,
-    calculate_delta,
-    lookup_record,
-    flag_exception,
-    flag_pass,
+    calculate_deltas,
+    lookup_records,
+    flag_findings_batch,
     generate_workpaper,
 ]
 
@@ -92,21 +84,20 @@ You must execute the testing procedure described in the control strictly using t
 
 Steps you normally take:
 1. Load the evidence files using `load_evidence`.
-2. Perform necessary data joins if needed using `join_datasets`.
-3. Iterate through each sample based on the Control threshold rules.
-   - You may use `calculate_delta` or `lookup_record`.
-   - IMPORTANT: `lookup_record` might return a 'not_found' dictionary if the record does not exist. This is a critical finding if the rule requires the record to exist (for example, account disable event). Do not assume missing records are errors in your logic; they are control exceptions.
-4. Call `flag_exception` or `flag_pass` for EVERY sample evaluated based on the rules. Each time you call these tools, the system will remember the resulting finding for workpaper generation.
-5. ONLY AFTER you have collected all the results from the `flag_exception` and `flag_pass` tool calls in previous turns, call `generate_workpaper` with the summarized counts and your overall conclusion.
+2. When you need information from multiple datasets, prefer using `join_datasets` once or `lookup_records` for batch lookups. Do not call record-level lookup tools repeatedly in a loop when a single join or batch lookup will do.
+3. When you need time differences for many rows (for example, termination date vs event time), use `calculate_deltas` once with two lists of timestamps instead of calling a per-row delta function in a loop.
+4. When you have evaluated all samples, record results in one batch: call `flag_findings_batch` with a list of findings (each with sample_id, sample_identifier, result, evidence_citations, and for EXCEPTION optionally finding_detail). Do not call per-sample flag tools in a loop for many samples.
+5. IMPORTANT: `lookup_records` may return a 'not_found' dictionary. That is a control exception when the rule requires the record to exist (for example, account disable event). Do not treat missing records as logic errors.
+6. ONLY AFTER all findings are recorded, call `generate_workpaper` once with total_samples, exceptions, and conclusion.
 
 CRITICAL RULES FOR `generate_workpaper`:
-- DO NOT call `generate_workpaper` in the same response as `flag_pass` or `flag_exception`. Wait for those tool responses first.
+- DO NOT call `generate_workpaper` in the same response as `flag_findings_batch`. Wait for that tool response first.
 - Call `generate_workpaper` EXACTLY ONCE for the entire test. Never call it in a loop or multiple times.
 - When you call `generate_workpaper`, you MUST provide all of the following named arguments:
   - `total_samples`: the total number of samples you actually tested (integer).
   - `exceptions`: the total number of exceptions you identified (integer).
   - `conclusion`: a short narrative conclusion string.
-- The control metadata and detailed findings will be pulled automatically from the prior `flag_pass` and `flag_exception` tool calls.
+- The control metadata and detailed findings will be pulled automatically from the prior `flag_findings_batch` tool calls and internal context.
 - Finish your response after generating the workpaper.
 
 Example call (structure only):
