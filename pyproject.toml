@@ -1,7 +1,8 @@
 [project]
 name = "soxray"
 version = "0.1.0"
-description = ""
+description = "MVP: LangGraph agent for SOX-style control testing from CSV evidence with PDF workpapers."
+readme = "README.md"
 authors = [
     {name = "munimdev",email = "munimzafar100@gmail.com"}
 ]
